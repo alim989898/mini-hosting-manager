@@ -21,15 +21,27 @@ install_stack() {
     ufw allow 80
     ufw allow 443
     ufw allow 21
+    ufw allow 20
+    ufw allow 40000:50000/tcp
     ufw --force enable
 
     systemctl enable apache2 vsftpd mysql
     systemctl start apache2 vsftpd mysql
 
-    echo "▶ Настройка vsftpd..."
+    reconfigure_services
+}
+
+reconfigure_services() {
+    echo "🔄 Переконфигурация сервисов..."
+    
+    # Переконфигурация vsftpd
+    echo "▶ Переконфигурация vsftpd..."
+    
+    # Останавливаем сервис
+    systemctl stop vsftpd 2>/dev/null || true
     
     # Бэкап оригинального файла
-    cp /etc/vsftpd.conf /etc/vsftpd.conf.backup
+    cp /etc/vsftpd.conf /etc/vsftpd.conf.backup.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
     
     cat > /etc/vsftpd.conf <<EOF
 listen=YES
@@ -61,24 +73,79 @@ EOF
 
     # Создание необходимых директорий
     mkdir -p /var/run/vsftpd/empty
+    chmod 755 /var/run/vsftpd/empty
     
     # Настройка PAM
-    echo "# PAM для vsftpd" > /etc/pam.d/vsftpd
-    echo "auth required pam_shells.so" >> /etc/pam.d/vsftpd
-    echo "auth required pam_unix.so" >> /etc/pam.d/vsftpd
-    echo "account required pam_unix.so" >> /etc/pam.d/vsftpd
-    echo "session required pam_unix.so" >> /etc/pam.d/vsftpd
-    
-    # Создание файла пользователей
+    cat > /etc/pam.d/vsftpd <<EOF
+# PAM для vsftpd
+auth required pam_shells.so
+auth required pam_unix.so
+account required pam_unix.so
+session required pam_unix.so
+EOF
+
+    # Создание файла пользователей если не существует
     touch /etc/vsftpd.user_list
     chmod 644 /etc/vsftpd.user_list
+    
+    # Настройка прав на папки FTP пользователей
+    for user_dir in $WEB_ROOT/*; do
+        if [ -d "$user_dir" ]; then
+            user=$(basename "$user_dir")
+            if id "$user" &>/dev/null; then
+                chown -R "$user:www-data" "$user_dir"
+                chmod -R 755 "$user_dir"
+                chmod 750 "$user_dir"
+            fi
+        fi
+    done
 
+    # Запускаем vsftpd
     systemctl restart vsftpd
-
-    a2enmod rewrite ssl
+    
+    # Переконфигурация Apache
+    echo "▶ Переконфигурация Apache..."
+    
+    a2enmod rewrite ssl headers proxy proxy_http proxy_fcgi setenvif
+    a2enconf php*-fpm 2>/dev/null || true
+    
+    # Включаем все конфиги сайтов
+    for conf in $APACHE_SITES/*.conf; do
+        if [ -f "$conf" ]; then
+            site=$(basename "$conf" .conf)
+            a2ensite "$site.conf" 2>/dev/null || true
+        fi
+    done
+    
     systemctl reload apache2
-
-    echo "✅ Установка завершена"
+    
+    # Переконфигурация MySQL
+    echo "▶ Проверка MySQL..."
+    
+    # Убедимся что MySQL запущен
+    systemctl restart mysql 2>/dev/null || true
+    
+    # Настройка пароля root если не установлен
+    if ! mysql -u root -e "SELECT 1;" &>/dev/null; then
+        echo "⚠️  Настройка root пароля MySQL..."
+        mysql_root_pass=$(generate_password)
+        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$mysql_root_pass'; FLUSH PRIVILEGES;" 2>/dev/null || true
+        echo "🔐 Пароль root MySQL: $mysql_root_pass"
+        echo "Сохраните этот пароль!"
+    fi
+    
+    # Перезапуск всех сервисов
+    echo "▶ Перезапуск сервисов..."
+    systemctl restart apache2 vsftpd mysql
+    
+    # Проверка статуса
+    echo "✅ Проверка статуса сервисов:"
+    echo "-------------------------"
+    systemctl is-active apache2 && echo "Apache: ✅ Работает" || echo "Apache: ❌ Ошибка"
+    systemctl is-active vsftpd && echo "FTP: ✅ Работает" || echo "FTP: ❌ Ошибка"
+    systemctl is-active mysql && echo "MySQL: ✅ Работает" || echo "MySQL: ❌ Ошибка"
+    
+    echo "✅ Переконфигурация завершена"
 }
 
 generate_password() {
@@ -110,13 +177,14 @@ add_domain() {
         echo "$FTPUSER:$FTPPASS" | chpasswd
         
         # Создаем директории
-        mkdir -p "$SITE_ROOT"/{www,logs,backup}
+        mkdir -p "$SITE_ROOT"/{www,logs,backup,tmp}
         mkdir -p "$SITE_ROOT"/www/public_html
         
         # Настройка прав
         chown -R "$FTPUSER:www-data" "$SITE_ROOT"
         chmod -R 755 "$SITE_ROOT"
         chmod 750 "$SITE_ROOT"
+        chmod 777 "$SITE_ROOT/tmp" 2>/dev/null || true
         
         # Добавляем в список FTP пользователей
         echo "$FTPUSER" >> /etc/vsftpd.user_list
@@ -144,6 +212,16 @@ add_domain() {
     
     ErrorLog $SITE_ROOT/logs/error.log
     CustomLog $SITE_ROOT/logs/access.log combined
+    
+    # PHP настройки
+    <FilesMatch \.php$>
+        SetHandler "proxy:unix:/run/php/php8.1-fpm.sock|fcgi://localhost"
+    </FilesMatch>
+    
+    <Directory $SITE_ROOT/www/public_html>
+        Require all granted
+        AllowOverride All
+    </Directory>
 </VirtualHost>
 EOF
 
@@ -157,6 +235,7 @@ EOF
         body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
         .success { color: green; font-size: 24px; }
         .info { color: #666; margin-top: 20px; }
+        .error { color: red; }
     </style>
 </head>
 <body>
@@ -165,6 +244,16 @@ EOF
     <div class="info">Пользователь FTP: $FTPUSER</div>
     <div class="info">Каталог: $SITE_ROOT/www/public_html</div>
     <div class="info">PHP Version: <?php echo phpversion(); ?></div>
+    <div class="info">Дата: <?php echo date('Y-m-d H:i:s'); ?></div>
+    <?php
+    // Проверка FTP
+    \$ftp_check = file_exists('/etc/vsftpd.conf') ? '✅ Настроен' : '❌ Ошибка';
+    echo '<div class="info">FTP: ' . \$ftp_check . '</div>';
+    
+    // Проверка MySQL
+    \$mysql_check = function_exists('mysqli_connect') ? '✅ Доступен' : '❌ Ошибка';
+    echo '<div class="info">MySQL: ' . \$mysql_check . '</div>';
+    ?>
 </body>
 </html>
 EOF
@@ -192,10 +281,14 @@ EOF
 База данных: $DBNAME
 Пользователь БД: $FTPUSER
 Пароль БД: $DBPASS
+Дата создания: $(date)
 EOF
     
     chmod 600 "$SITE_ROOT/.siteinfo"
     chown "$FTPUSER:$FTPUSER" "$SITE_ROOT/.siteinfo"
+    
+    # Перезапускаем FTP для применения изменений
+    systemctl restart vsftpd
     
     echo "✅ Домен $DOMAIN добавлен"
     echo ""
@@ -209,8 +302,10 @@ EOF
     echo "   Пароль БД: $DBPASS"
     echo ""
     echo "📝 Все данные сохранены в: $SITE_ROOT/.siteinfo"
-    echo "🔗 Доступ по FTP: ftp://$DOMAIN"
+    echo "🔗 Доступ по FTP: ftp://$DOMAIN (порт 21)"
     echo "🔗 Веб-сайт: http://$DOMAIN"
+    echo ""
+    echo "⚠️  Если FTP не работает, запустите: ./host.sh reconfigure"
 }
 
 del_domain() {
@@ -385,6 +480,16 @@ show_info() {
         echo "  ❌ Не установлен"
         echo "  Используйте: ./host.sh ssl $DOMAIN"
     fi
+    
+    # Проверка FTP
+    echo ""
+    echo "📤 FTP статус:"
+    if grep -q "^$FTPUSER$" /etc/vsftpd.user_list 2>/dev/null; then
+        echo "  ✅ Пользователь в списке FTP"
+    else
+        echo "  ❌ Пользователь не в списке FTP"
+        echo "  Используйте: ./host.sh reconfigure"
+    fi
 }
 
 list_domains() {
@@ -406,6 +511,13 @@ list_domains() {
                     echo "     SSL: ✅ Установлен"
                 else
                     echo "     SSL: ❌ Отсутствует"
+                fi
+                
+                # Показываем FTP статус
+                if grep -q "^$FTPUSER$" /etc/vsftpd.user_list 2>/dev/null; then
+                    echo "     FTP: ✅ Настроен"
+                else
+                    echo "     FTP: ⚠️  Требуется настройка"
                 fi
                 echo ""
             fi
@@ -430,11 +542,12 @@ show_gui() {
         echo "7. ℹ️  Информация о домене"
         echo "8. 📋 Список доменов"
         echo "9. 📊 Статус сервисов"
-        echo "10. 🚪 Выход"
+        echo "10. 🔧 Переконфигурировать сервисы"
+        echo "11. 🚪 Выход"
         echo ""
         echo "========================================="
         
-        read -p "Выберите действие [1-10]: " choice
+        read -p "Выберите действие [1-11]: " choice
         
         case $choice in
             1)
@@ -493,14 +606,25 @@ show_gui() {
             9)
                 echo "📊 Статус сервисов:"
                 echo "------------------"
-                systemctl status apache2 --no-pager -l
+                echo "Apache2:"
+                systemctl status apache2 --no-pager -l | head -10
                 echo ""
-                systemctl status vsftpd --no-pager -l
+                echo "FTP:"
+                systemctl status vsftpd --no-pager -l | head -10
                 echo ""
-                systemctl status mysql --no-pager -l
+                echo "MySQL:"
+                systemctl status mysql --no-pager -l | head -10
+                echo ""
+                echo "Firewall (UFW):"
+                ufw status verbose
                 read -p "Нажмите Enter для продолжения..."
                 ;;
             10)
+                echo "🔧 Переконфигурация сервисов..."
+                reconfigure_services
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            11)
                 echo "До свидания!"
                 exit 0
                 ;;
@@ -544,6 +668,9 @@ case "$1" in
     list)
         list_domains
         ;;
+    reconfigure)
+        reconfigure_services
+        ;;
     gui)
         show_gui
         ;;
@@ -561,6 +688,7 @@ case "$1" in
         echo "      type: ftp, mysql, all (по умолчанию: all)"
         echo "  ./host.sh info domain              - Информация о домене"
         echo "  ./host.sh list                     - Список доменов"
+        echo "  ./host.sh reconfigure              - Переконфигурировать сервисы"
         echo "  ./host.sh gui                      - Графический интерфейс"
         echo ""
         echo "Примеры:"
@@ -570,5 +698,6 @@ case "$1" in
         echo "  ./host.sh change-password mysite.ru mysql      # Сменить только MySQL"
         echo "  ./host.sh change-password mysite.ru            # Сменить все пароли"
         echo "  ./host.sh info mysite.ru                       # Показать данные"
+        echo "  ./host.sh reconfigure                          # Перенастроить сервисы"
         ;;
 esac
