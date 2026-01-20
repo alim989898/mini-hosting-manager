@@ -9,39 +9,180 @@ FTPPASS=$3
 APACHE_SITES="/etc/apache2/sites-available"
 WEB_ROOT="/var/www"
 
+# GUI функция
+show_gui() {
+    while true; do
+        clear
+        echo "╔══════════════════════════════════════════════════════╗"
+        echo "║             🚀 ПАНЕЛЬ УПРАВЛЕНИЯ ХОСТИНГОМ           ║"
+        echo "╠══════════════════════════════════════════════════════╣"
+        echo "║                                                      ║"
+        echo "║  1. 📦 Установить стек (LAMP + FTP + SSL)           ║"
+        echo "║  2. ➕ Добавить новый домен                          ║"
+        echo "║  3. 🗑️  Удалить домен                               ║"
+        echo "║  4. 🔐 Установить SSL сертификат                    ║"
+        echo "║  5. 🔄 Обновить все SSL сертификаты                 ║"
+        echo "║  6. 🔑 Сменить пароли FTP/MySQL                     ║"
+        echo "║  7. 🛠️  Исправить пользователя/домен                ║"
+        echo "║  8. 🔧 Переконфигурировать все сервисы              ║"
+        echo "║  9. 📋 Список всех доменов                          ║"
+        echo "║  10. ℹ️  Информация о домене                         ║"
+        echo "║  11. 📊 Статус сервисов                             ║"
+        echo "║  12. 🚪 Выход                                       ║"
+        echo "║                                                      ║"
+        echo "╚══════════════════════════════════════════════════════╝"
+        echo ""
+        echo "📌 Текущая проблема: пользователь ioc_kz настроен неправильно"
+        echo "   Домашняя директория: /var/www/ioc.kz (должна быть доступна)"
+        echo ""
+        
+        read -p "Выберите действие [1-12]: " choice
+        
+        case $choice in
+            1)
+                install_stack
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            2)
+                read -p "Введите домен (например: example.com): " DOMAIN
+                if [[ -n "$DOMAIN" ]]; then
+                    echo ""
+                    echo "Пароль FTP будет сгенерирован автоматически."
+                    read -p "Или введите свой пароль (оставьте пустым для авто): " FTPPASS
+                    add_domain
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            3)
+                read -p "Введите домен для удаления: " DOMAIN
+                if [[ -n "$DOMAIN" ]]; then
+                    del_domain
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            4)
+                read -p "Введите домен для SSL: " DOMAIN
+                if [[ -n "$DOMAIN" ]]; then
+                    ssl_domain
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            5)
+                renew_ssl
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            6)
+                read -p "Введите домен: " DOMAIN
+                if [[ -n "$DOMAIN" ]]; then
+                    echo ""
+                    echo "Что сгенерировать заново?"
+                    echo "  1. 🔐 Только пароль FTP"
+                    echo "  2. 🗄️  Только пароль MySQL"
+                    echo "  3. 🔑 Все пароли"
+                    read -p "Выберите [1-3]: " pass_choice
+                    
+                    case $pass_choice in
+                        1) TYPE="ftp" ;;
+                        2) TYPE="mysql" ;;
+                        3) TYPE="all" ;;
+                        *) TYPE="all" ;;
+                    esac
+                    
+                    change_password
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            7)
+                echo ""
+                echo "🛠️  ИСПРАВЛЕНИЕ ПРОБЛЕМ:"
+                echo "  1. Исправить пользователя ioc_kz (текущая проблема)"
+                echo "  2. Исправить конкретный домен"
+                echo "  3. Восстановить все домены"
+                read -p "Выберите [1-3]: " fix_choice
+                
+                case $fix_choice in
+                    1)
+                        fix_user "ioc_kz"
+                        ;;
+                    2)
+                        read -p "Введите домен: " DOMAIN
+                        if [[ -n "$DOMAIN" ]]; then
+                            fix_domain
+                        fi
+                        ;;
+                    3)
+                        reconfigure_services
+                        ;;
+                esac
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            8)
+                echo ""
+                echo "⚠️  ВНИМАНИЕ: Это переконфигурирует все сервисы!"
+                echo "   Будет исправлено:"
+                echo "   - Настройки FTP"
+                echo "   - Права доступа"
+                echo "   - Конфиги Apache"
+                echo "   - Директории пользователей"
+                read -p "Продолжить? (y/N): " confirm
+                if [[ "$confirm" =~ ^[Yy]$ ]]; then
+                    reconfigure_services
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            9)
+                list_domains
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            10)
+                read -p "Введите домен: " DOMAIN
+                if [[ -n "$DOMAIN" ]]; then
+                    show_info
+                fi
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            11)
+                show_status
+                read -p "Нажмите Enter для продолжения..."
+                ;;
+            12)
+                echo ""
+                echo "До свидания! 👋"
+                exit 0
+                ;;
+            *)
+                echo "❌ Неверный выбор"
+                sleep 1
+                ;;
+        esac
+    done
+}
+
+# Функции
 install_stack() {
-    echo "▶ Установка Apache, PHP, MySQL, FTP, SSL..."
+    echo "▶ Установка стека LAMP + FTP + SSL..."
     apt update
     apt install -y apache2 mysql-server php libapache2-mod-php \
         php-mysql php-cli php-curl php-gd php-mbstring php-xml php-zip \
         vsftpd certbot python3-certbot-apache ufw
     
-    # Настройка брандмауэра
-    ufw allow 22
-    ufw allow 80
-    ufw allow 443
-    ufw allow 21
-    ufw allow 20
-    ufw allow 40000:50000/tcp
+    ufw allow 22,80,443,21,20,40000:50000/tcp
     ufw --force enable
 
     systemctl enable apache2 vsftpd mysql
     systemctl start apache2 vsftpd mysql
-
+    
     reconfigure_services
 }
 
 reconfigure_services() {
-    echo "🔄 Переконфигурация сервисов..."
+    echo "🔄 Переконфигурация всех сервисов..."
     
-    # Переконфигурация vsftpd
-    echo "▶ Переконфигурация vsftpd..."
-    
-    # Останавливаем сервис
+    # Останавливаем FTP
     systemctl stop vsftpd 2>/dev/null || true
     
-    # Бэкап оригинального файла
-    cp /etc/vsftpd.conf /etc/vsftpd.conf.backup.$(date +%Y%m%d%H%M%S) 2>/dev/null || true
+    # Создаем конфиг vsftpd
+    PUBLIC_IP=$(curl -s ifconfig.me || hostname -I | awk '{print $1}')
     
     cat > /etc/vsftpd.conf <<EOF
 listen=YES
@@ -54,148 +195,328 @@ dirmessage_enable=YES
 use_localtime=YES
 xferlog_enable=YES
 connect_from_port_20=YES
-secure_chroot_dir=/var/run/vsftpd/empty
-pam_service_name=vsftpd
-rsa_cert_file=/etc/ssl/certs/ssl-cert-snakeoil.pem
-rsa_private_key_file=/etc/ssl/private/ssl-cert-snakeoil.key
-ssl_enable=NO
 chroot_local_user=YES
 allow_writeable_chroot=YES
+secure_chroot_dir=/var/run/vsftpd/empty
+pam_service_name=vsftpd
+ssl_enable=NO
 pasv_enable=YES
 pasv_min_port=40000
 pasv_max_port=50000
-user_sub_token=\$USER
-local_root=/var/www/\$USER
+pasv_address=$PUBLIC_IP
 userlist_enable=YES
 userlist_deny=NO
 userlist_file=/etc/vsftpd.user_list
 EOF
 
-    # Создание необходимых директорий
+    # Создаем необходимые директории
     mkdir -p /var/run/vsftpd/empty
     chmod 755 /var/run/vsftpd/empty
     
-    # Настройка PAM
-    cat > /etc/pam.d/vsftpd <<EOF
-# PAM для vsftpd
-auth required pam_shells.so
-auth required pam_unix.so
+    # Исправляем PAM
+    cat > /etc/pam.d/vsftpd <<'EOF'
+auth    required pam_shells.so
+auth    required pam_unix.so
 account required pam_unix.so
 session required pam_unix.so
 EOF
 
-    # Создание файла пользователей если не существует
-    touch /etc/vsftpd.user_list
-    chmod 644 /etc/vsftpd.user_list
+    # Восстанавливаем всех пользователей из user_list
+    echo "▶ Восстановление пользователей FTP..."
     
-    # Настройка прав на папки FTP пользователей
-    for user_dir in $WEB_ROOT/*; do
-        if [ -d "$user_dir" ]; then
-            user=$(basename "$user_dir")
-            if id "$user" &>/dev/null; then
-                chown -R "$user:www-data" "$user_dir"
-                chmod -R 755 "$user_dir"
-                chmod 750 "$user_dir"
+    if [ -f /etc/vsftpd.user_list ]; then
+        while read FTPUSER; do
+            # Пропускаем пустые строки
+            [[ -z "$FTPUSER" ]] && continue
+            
+            echo "Обработка: $FTPUSER"
+            
+            if id "$FTPUSER" &>/dev/null; then
+                # Получаем текущую домашнюю директорию
+                USER_HOME=$(getent passwd "$FTPUSER" | cut -d: -f6)
+                
+                # Если домашняя директория не существует
+                if [ ! -d "$USER_HOME" ]; then
+                    echo "  Создание директории: $USER_HOME"
+                    mkdir -p "$USER_HOME"
+                    mkdir -p "$USER_HOME/www/public_html"
+                    
+                    # Создаем тестовую страницу
+                    cat > "$USER_HOME/www/public_html/index.html" <<HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <title>$FTPUSER</title>
+</head>
+<body>
+    <h1>Сайт $FTPUSER</h1>
+    <p>Директория восстановлена: $USER_HOME</p>
+</body>
+</html>
+HTML
+                fi
+                
+                # Настраиваем права
+                chown -R "$FTPUSER:$FTPUSER" "$USER_HOME"
+                chmod -R 755 "$USER_HOME"
+                chmod 750 "$USER_HOME"
+                
+                if [ -d "$USER_HOME/www/public_html" ]; then
+                    chown -R "$FTPUSER:www-data" "$USER_HOME/www/public_html"
+                    chmod -R 775 "$USER_HOME/www/public_html"
+                fi
+                
+                # Меняем оболочку на /bin/bash
+                usermod -s /bin/bash "$FTPUSER"
+                
+                echo "  ✅ Исправлен"
+            else
+                echo "  ⚠️  Пользователь не существует"
             fi
-        fi
-    done
-
-    # Запускаем vsftpd
-    systemctl restart vsftpd
-    
-    # Переконфигурация Apache
-    echo "▶ Переконфигурация Apache..."
-    
-    a2enmod rewrite ssl headers proxy proxy_http proxy_fcgi setenvif
-    a2enconf php*-fpm 2>/dev/null || true
-    
-    # Включаем все конфиги сайтов
-    for conf in $APACHE_SITES/*.conf; do
-        if [ -f "$conf" ]; then
-            site=$(basename "$conf" .conf)
-            a2ensite "$site.conf" 2>/dev/null || true
-        fi
-    done
-    
-    systemctl reload apache2
-    
-    # Переконфигурация MySQL
-    echo "▶ Проверка MySQL..."
-    
-    # Убедимся что MySQL запущен
-    systemctl restart mysql 2>/dev/null || true
-    
-    # Настройка пароля root если не установлен
-    if ! mysql -u root -e "SELECT 1;" &>/dev/null; then
-        echo "⚠️  Настройка root пароля MySQL..."
-        mysql_root_pass=$(generate_password)
-        mysql -u root -e "ALTER USER 'root'@'localhost' IDENTIFIED BY '$mysql_root_pass'; FLUSH PRIVILEGES;" 2>/dev/null || true
-        echo "🔐 Пароль root MySQL: $mysql_root_pass"
-        echo "Сохраните этот пароль!"
+        done < /etc/vsftpd.user_list
     fi
     
-    # Перезапуск всех сервисов
-    echo "▶ Перезапуск сервисов..."
-    systemctl restart apache2 vsftpd mysql
+    # Запускаем сервисы
+    systemctl restart vsftpd
+    systemctl restart apache2
+    systemctl restart mysql
     
-    # Проверка статуса
-    echo "✅ Проверка статуса сервисов:"
-    echo "-------------------------"
-    systemctl is-active apache2 && echo "Apache: ✅ Работает" || echo "Apache: ❌ Ошибка"
-    systemctl is-active vsftpd && echo "FTP: ✅ Работает" || echo "FTP: ❌ Ошибка"
-    systemctl is-active mysql && echo "MySQL: ✅ Работает" || echo "MySQL: ❌ Ошибка"
-    
-    echo "✅ Переконфигурация завершена"
+    echo ""
+    echo "✅ ПЕРЕКОНФИГУРАЦИЯ ЗАВЕРШЕНА"
+    echo "============================="
+    echo "Список пользователей FTP:"
+    cat /etc/vsftpd.user_list 2>/dev/null || echo "Файл не найден"
 }
 
-generate_password() {
-    openssl rand -base64 12 | tr -d '/+' | cut -c1-12
+fix_user() {
+    FTPUSER=$1
+    echo "🛠️  Исправление пользователя: $FTPUSER"
+    
+    if ! id "$FTPUSER" &>/dev/null; then
+        echo "❌ Пользователь не существует"
+        return 1
+    fi
+    
+    # Получаем домашнюю директорию
+    USER_HOME=$(getent passwd "$FTPUSER" | cut -d: -f6)
+    echo "Текущая домашняя директория: $USER_HOME"
+    
+    # Проверяем существование директории
+    if [ ! -d "$USER_HOME" ]; then
+        echo "Создание директории: $USER_HOME"
+        mkdir -p "$USER_HOME"
+        mkdir -p "$USER_HOME/www/public_html"
+        
+        # Тестовый файл
+        cat > "$USER_HOME/www/public_html/index.html" <<HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <title>$FTPUSER - Восстановлен</title>
+</head>
+<body>
+    <h1>Сайт $FTPUSER</h1>
+    <p>Директория восстановлена: $USER_HOME</p>
+    <p>Пользователь: $FTPUSER</p>
+    <p>Время: $(date)</p>
+</body>
+</html>
+HTML
+    fi
+    
+    # Настраиваем права
+    chown -R "$FTPUSER:$FTPUSER" "$USER_HOME"
+    chmod -R 755 "$USER_HOME"
+    chmod 750 "$USER_HOME"
+    
+    if [ -d "$USER_HOME/www/public_html" ]; then
+        chown -R "$FTPUSER:www-data" "$USER_HOME/www/public_html"
+        chmod -R 775 "$USER_HOME/www/public_html"
+    fi
+    
+    # Меняем оболочку
+    usermod -s /bin/bash "$FTPUSER"
+    
+    # Добавляем в списки FTP если нет
+    if [ -f /etc/vsftpd.user_list ] && ! grep -q "^$FTPUSER$" /etc/vsftpd.user_list; then
+        echo "$FTPUSER" >> /etc/vsftpd.user_list
+    fi
+    
+    # Перезапускаем FTP
+    systemctl restart vsftpd
+    
+    echo ""
+    echo "✅ ПОЛЬЗОВАТЕЛЬ ИСПРАВЛЕН"
+    echo "========================"
+    echo "Имя: $FTPUSER"
+    echo "Домашняя директория: $USER_HOME"
+    echo "Оболочка: $(getent passwd "$FTPUSER" | cut -d: -f7)"
+    echo ""
+    echo "📤 ПРОВЕРКА FTP:"
+    echo "  ftp://$FTPUSER:ВАШ_ПАРОЛЬ@$(curl -s ifconfig.me || hostname -I | awk '{print $1}')"
+}
+
+fix_domain() {
+    if [ -z "$DOMAIN" ]; then
+        echo "❌ Укажите домен"
+        return 1
+    fi
+    
+    FTPUSER="${DOMAIN//./_}"
+    SITE_ROOT="$WEB_ROOT/$DOMAIN"
+    
+    echo "🛠️  Исправление домена: $DOMAIN"
+    echo "Пользователь: $FTPUSER"
+    
+    # Проверяем пользователя
+    if ! id "$FTPUSER" &>/dev/null; then
+        echo "❌ Пользователь не существует"
+        return 1
+    fi
+    
+    # Меняем домашнюю директорию
+    CURRENT_HOME=$(getent passwd "$FTPUSER" | cut -d: -f6)
+    if [ "$CURRENT_HOME" != "$SITE_ROOT" ]; then
+        echo "Изменение домашней директории: $CURRENT_HOME -> $SITE_ROOT"
+        usermod -d "$SITE_ROOT" "$FTPUSER"
+    fi
+    
+    # Создаем директорию если нет
+    if [ ! -d "$SITE_ROOT" ]; then
+        echo "Создание директории: $SITE_ROOT"
+        mkdir -p "$SITE_ROOT"
+        mkdir -p "$SITE_ROOT/www/public_html"
+        mkdir -p "$SITE_ROOT/logs"
+        mkdir -p "$SITE_ROOT/backup"
+    fi
+    
+    # Настраиваем права
+    chown -R "$FTPUSER:$FTPUSER" "$SITE_ROOT"
+    chmod -R 755 "$SITE_ROOT"
+    chmod 750 "$SITE_ROOT"
+    
+    if [ -d "$SITE_ROOT/www/public_html" ]; then
+        chown -R "$FTPUSER:www-data" "$SITE_ROOT/www/public_html"
+        chmod -R 775 "$SITE_ROOT/www/public_html"
+        
+        # Тестовый файл
+        cat > "$SITE_ROOT/www/public_html/index.html" <<HTML
+<!DOCTYPE html>
+<html>
+<head>
+    <title>$DOMAIN - Исправлен</title>
+</head>
+<body>
+    <h1>Сайт $DOMAIN</h1>
+    <p>Домен исправлен: $(date)</p>
+    <p>Пользователь FTP: $FTPUSER</p>
+    <p>Директория: $SITE_ROOT/www/public_html</p>
+</body>
+</html>
+HTML
+    fi
+    
+    # Меняем оболочку
+    usermod -s /bin/bash "$FTPUSER"
+    
+    # Создаем конфиг Apache если нет
+    APACHE_CONF="$APACHE_SITES/$DOMAIN.conf"
+    if [ ! -f "$APACHE_CONF" ]; then
+        echo "Создание конфига Apache..."
+        cat > "$APACHE_CONF" <<EOF
+<VirtualHost *:80>
+    ServerName $DOMAIN
+    ServerAlias www.$DOMAIN
+    DocumentRoot $SITE_ROOT/www/public_html
+    
+    <Directory $SITE_ROOT/www/public_html>
+        Options Indexes FollowSymLinks
+        AllowOverride All
+        Require all granted
+    </Directory>
+    
+    ErrorLog $SITE_ROOT/logs/error.log
+    CustomLog $SITE_ROOT/logs/access.log combined
+</VirtualHost>
+EOF
+        a2ensite "$DOMAIN.conf" >/dev/null 2>&1
+    fi
+    
+    # Добавляем в списки FTP
+    if [ -f /etc/vsftpd.user_list ] && ! grep -q "^$FTPUSER$" /etc/vsftpd.user_list; then
+        echo "$FTPUSER" >> /etc/vsftpd.user_list
+    fi
+    
+    # Перезапускаем сервисы
+    systemctl reload apache2
+    systemctl restart vsftpd
+    
+    echo ""
+    echo "✅ ДОМЕН ИСПРАВЛЕН"
+    echo "================"
+    echo "🌐 Сайт: http://$DOMAIN"
+    echo "👤 FTP пользователь: $FTPUSER"
+    echo "📁 Директория: $SITE_ROOT/www/public_html"
 }
 
 add_domain() {
     if [ -z "$DOMAIN" ]; then
-        echo "❌ Ошибка: Укажите домен"
-        echo "Использование: ./host.sh add-domain domain [password]"
-        exit 1
+        echo "❌ Укажите домен"
+        return 1
     fi
     
-    echo "▶ Добавление домена $DOMAIN"
-    
-    FTPUSER="${DOMAIN//./_}"  # Заменяем точки на подчеркивания для имени пользователя
+    FTPUSER="${DOMAIN//./_}"
     SITE_ROOT="$WEB_ROOT/$DOMAIN"
-    APACHE_CONF="$APACHE_SITES/$DOMAIN.conf"
-
-    # Генерируем пароль FTP, если не указан
+    
+    echo "➕ Добавление домена: $DOMAIN"
+    
+    # Генерируем пароль
     if [ -z "$FTPPASS" ]; then
-        FTPPASS=$(generate_password)
-        echo "🔐 Автоматически сгенерирован пароль FTP: $FTPPASS"
+        FTPPASS=$(openssl rand -base64 12 | tr -d '/+' | cut -c1-12)
     fi
-
-    # Создаем пользователя (домен = имя пользователя)
+    
+    # Создаем пользователя
     if ! id "$FTPUSER" &>/dev/null; then
         useradd -m -d "$SITE_ROOT" -s /bin/bash -G www-data "$FTPUSER"
         echo "$FTPUSER:$FTPPASS" | chpasswd
-        
-        # Создаем директории
-        mkdir -p "$SITE_ROOT"/{www,logs,backup,tmp}
-        mkdir -p "$SITE_ROOT"/www/public_html
-        
-        # Настройка прав
-        chown -R "$FTPUSER:www-data" "$SITE_ROOT"
-        chmod -R 755 "$SITE_ROOT"
-        chmod 750 "$SITE_ROOT"
-        chmod 777 "$SITE_ROOT/tmp" 2>/dev/null || true
-        
-        # Добавляем в список FTP пользователей
-        echo "$FTPUSER" >> /etc/vsftpd.user_list
-        
-        # Настройка оболочки для FTP доступа
-        usermod -s /usr/sbin/nologin "$FTPUSER"
+        echo "✅ Пользователь создан"
     else
-        echo "⚠️  Пользователь $FTPUSER уже существует"
+        echo "⚠️  Пользователь уже существует"
+        echo "$FTPUSER:$FTPPASS" | chpasswd
+        echo "✅ Пароль обновлен"
     fi
-
-    # Создаем виртуальный хост Apache
+    
+    # Создаем директории
+    mkdir -p "$SITE_ROOT/www/public_html"
+    mkdir -p "$SITE_ROOT/logs"
+    mkdir -p "$SITE_ROOT/backup"
+    
+    # Настраиваем права
+    chown -R "$FTPUSER:$FTPUSER" "$SITE_ROOT"
+    chmod -R 755 "$SITE_ROOT"
+    chmod 750 "$SITE_ROOT"
+    
+    chown -R "$FTPUSER:www-data" "$SITE_ROOT/www/public_html"
+    chmod -R 775 "$SITE_ROOT/www/public_html"
+    
+    # Тестовый файл
+    cat > "$SITE_ROOT/www/public_html/index.php" <<EOF
+<!DOCTYPE html>
+<html>
+<head>
+    <title>$DOMAIN</title>
+</head>
+<body>
+    <h1>✅ $DOMAIN работает!</h1>
+    <p>Домен: $DOMAIN</p>
+    <p>Пользователь FTP: $FTPUSER</p>
+    <p>PHP: <?php echo phpversion(); ?></p>
+</body>
+</html>
+EOF
+    
+    # Конфиг Apache
+    APACHE_CONF="$APACHE_SITES/$DOMAIN.conf"
     cat > "$APACHE_CONF" <<EOF
 <VirtualHost *:80>
     ServerName $DOMAIN
@@ -203,439 +524,277 @@ add_domain() {
     DocumentRoot $SITE_ROOT/www/public_html
     
     <Directory $SITE_ROOT/www/public_html>
-        Options Indexes FollowSymLinks MultiViews
+        Options Indexes FollowSymLinks
         AllowOverride All
         Require all granted
-        Order allow,deny
-        allow from all
     </Directory>
     
     ErrorLog $SITE_ROOT/logs/error.log
     CustomLog $SITE_ROOT/logs/access.log combined
-    
-    # PHP настройки
-    <FilesMatch \.php$>
-        SetHandler "proxy:unix:/run/php/php8.1-fpm.sock|fcgi://localhost"
-    </FilesMatch>
-    
-    <Directory $SITE_ROOT/www/public_html>
-        Require all granted
-        AllowOverride All
-    </Directory>
 </VirtualHost>
 EOF
-
-    # Создаем тестовую страницу
-    cat > "$SITE_ROOT/www/public_html/index.php" <<EOF
-<!DOCTYPE html>
-<html>
-<head>
-    <title>$DOMAIN</title>
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; padding: 50px; }
-        .success { color: green; font-size: 24px; }
-        .info { color: #666; margin-top: 20px; }
-        .error { color: red; }
-    </style>
-</head>
-<body>
-    <div class="success">✅ Сайт $DOMAIN работает!</div>
-    <div class="info">Домен: $DOMAIN</div>
-    <div class="info">Пользователь FTP: $FTPUSER</div>
-    <div class="info">Каталог: $SITE_ROOT/www/public_html</div>
-    <div class="info">PHP Version: <?php echo phpversion(); ?></div>
-    <div class="info">Дата: <?php echo date('Y-m-d H:i:s'); ?></div>
-    <?php
-    // Проверка FTP
-    \$ftp_check = file_exists('/etc/vsftpd.conf') ? '✅ Настроен' : '❌ Ошибка';
-    echo '<div class="info">FTP: ' . \$ftp_check . '</div>';
     
-    // Проверка MySQL
-    \$mysql_check = function_exists('mysqli_connect') ? '✅ Доступен' : '❌ Ошибка';
-    echo '<div class="info">MySQL: ' . \$mysql_check . '</div>';
-    ?>
-</body>
-</html>
-EOF
-
-    chown "$FTPUSER:www-data" "$SITE_ROOT/www/public_html/index.php"
-    
-    # Включаем сайт и перезагружаем Apache
     a2ensite "$DOMAIN.conf"
-    systemctl reload apache2
     
-    # Настройка MySQL
+    # Добавляем в FTP
+    echo "$FTPUSER" >> /etc/vsftpd.user_list
+    
+    # MySQL
     DBNAME="${FTPUSER}_db"
-    DBPASS=$(generate_password)
-    mysql -e "CREATE DATABASE IF NOT EXISTS $DBNAME CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" 2>/dev/null || true
+    DBPASS=$(openssl rand -base64 12 | tr -d '/+' | cut -c1-12)
+    
+    mysql -e "CREATE DATABASE IF NOT EXISTS \`$DBNAME\`;" 2>/dev/null || true
     mysql -e "CREATE USER IF NOT EXISTS '$FTPUSER'@'localhost' IDENTIFIED BY '$DBPASS';" 2>/dev/null || true
-    mysql -e "GRANT ALL PRIVILEGES ON $DBNAME.* TO '$FTPUSER'@'localhost';" 2>/dev/null || true
+    mysql -e "GRANT ALL ON \`$DBNAME\`.* TO '$FTPUSER'@'localhost';" 2>/dev/null || true
     mysql -e "FLUSH PRIVILEGES;" 2>/dev/null || true
     
-    # Создаем файл с данными
+    # Файл с информацией
     cat > "$SITE_ROOT/.siteinfo" <<EOF
 Домен: $DOMAIN
-Пользователь FTP: $FTPUSER
-Пароль FTP: $FTPPASS
-Каталог сайта: $SITE_ROOT/www/public_html
+FTP пользователь: $FTPUSER
+FTP пароль: $FTPPASS
 База данных: $DBNAME
-Пользователь БД: $FTPUSER
-Пароль БД: $DBPASS
-Дата создания: $(date)
+MySQL пользователь: $FTPUSER
+MySQL пароль: $DBPASS
+Директория: $SITE_ROOT/www/public_html
 EOF
     
     chmod 600 "$SITE_ROOT/.siteinfo"
     chown "$FTPUSER:$FTPUSER" "$SITE_ROOT/.siteinfo"
     
-    # Перезапускаем FTP для применения изменений
+    # Перезапускаем
+    systemctl reload apache2
     systemctl restart vsftpd
     
-    echo "✅ Домен $DOMAIN добавлен"
     echo ""
-    echo "📋 Информация о сайте:"
-    echo "   Домен: $DOMAIN"
-    echo "   Пользователь FTP: $FTPUSER"
-    echo "   Пароль FTP: $FTPPASS"
-    echo "   Каталог: $SITE_ROOT/www/public_html"
-    echo "   База данных: $DBNAME"
-    echo "   Пользователь БД: $FTPUSER"
-    echo "   Пароль БД: $DBPASS"
-    echo ""
-    echo "📝 Все данные сохранены в: $SITE_ROOT/.siteinfo"
-    echo "🔗 Доступ по FTP: ftp://$DOMAIN (порт 21)"
-    echo "🔗 Веб-сайт: http://$DOMAIN"
-    echo ""
-    echo "⚠️  Если FTP не работает, запустите: ./host.sh reconfigure"
+    echo "✅ ДОМЕН ДОБАВЛЕН"
+    echo "==============="
+    echo "🌐 Сайт: http://$DOMAIN"
+    echo "📤 FTP: $FTPUSER : $FTPPASS"
+    echo "🗄️  MySQL: $DBNAME : $DBPASS"
+    echo "📁 Папка: $SITE_ROOT/www/public_html"
 }
 
 del_domain() {
     if [ -z "$DOMAIN" ]; then
-        echo "❌ Ошибка: Укажите домен"
-        echo "Использование: ./host.sh del-domain domain"
-        exit 1
+        echo "❌ Укажите домен"
+        return 1
     fi
-    
-    echo "▶ Удаление домена $DOMAIN"
     
     FTPUSER="${DOMAIN//./_}"
     
-    # Отключаем сайт в Apache
+    echo "🗑️  Удаление домена: $DOMAIN"
+    read -p "Вы уверены? (y/N): " confirm
+    
+    if [[ "$confirm" != "y" ]]; then
+        echo "❌ Отменено"
+        return
+    fi
+    
+    # Удаляем из Apache
     a2dissite "$DOMAIN.conf" 2>/dev/null || true
     rm -f "$APACHE_SITES/$DOMAIN.conf"
+    rm -f "$APACHE_SITES/$DOMAIN-le-ssl.conf" 2>/dev/null || true
     
-    # Удаляем пользователя из vsftpd.user_list
+    # Удаляем из FTP
     sed -i "/^$FTPUSER$/d" /etc/vsftpd.user_list 2>/dev/null || true
     
-    # Удаляем пользователя и домашнюю директорию
+    # Удаляем пользователя
     userdel -r "$FTPUSER" 2>/dev/null || true
     
     # Удаляем директорию
     rm -rf "$WEB_ROOT/$DOMAIN" 2>/dev/null || true
     
-    # Удаляем базу данных MySQL
-    mysql -e "DROP DATABASE IF EXISTS ${FTPUSER}_db;" 2>/dev/null || true
+    # Удаляем базу данных
+    mysql -e "DROP DATABASE IF EXISTS \`${FTPUSER}_db\`;" 2>/dev/null || true
     mysql -e "DROP USER IF EXISTS '$FTPUSER'@'localhost';" 2>/dev/null || true
     
     systemctl reload apache2
+    systemctl restart vsftpd
     
-    echo "✅ Домен $DOMAIN удалён"
+    echo "✅ Домен удален"
 }
 
 ssl_domain() {
     if [ -z "$DOMAIN" ]; then
-        echo "❌ Ошибка: Укажите домен"
-        echo "Использование: ./host.sh ssl domain"
-        exit 1
+        echo "❌ Укажите домен"
+        return 1
     fi
     
-    echo "▶ Выпуск SSL для $DOMAIN"
-    
-    # Проверяем, существует ли конфиг
-    if [ ! -f "$APACHE_SITES/$DOMAIN.conf" ]; then
-        echo "❌ Ошибка: Домен $DOMAIN не найден"
-        exit 1
-    fi
-    
-    # Используем временную почту, если не указана
-    EMAIL="admin@$DOMAIN"
+    echo "🔐 Установка SSL для: $DOMAIN"
     
     certbot --apache -d "$DOMAIN" -d "www.$DOMAIN" \
         --non-interactive \
         --agree-tos \
-        --email "$EMAIL" \
+        --email "admin@$DOMAIN" \
         --redirect
     
-    echo "✅ SSL установлен для $DOMAIN"
-    echo "🔗 Сайт доступен по HTTPS: https://$DOMAIN"
+    echo "✅ SSL установлен: https://$DOMAIN"
 }
 
 renew_ssl() {
-    echo "▶ Обновление SSL сертификатов..."
+    echo "🔄 Обновление SSL сертификатов..."
     certbot renew --quiet
-    echo "✅ SSL сертификаты обновлены"
+    echo "✅ SSL обновлены"
 }
 
 change_password() {
     if [ -z "$DOMAIN" ]; then
-        echo "❌ Ошибка: Укажите домен"
-        echo "Использование: ./host.sh change-password domain [type]"
-        echo "  type: ftp, mysql, all (по умолчанию: all)"
-        exit 1
-    fi
-    
-    TYPE=${2:-all}
-    FTPUSER="${DOMAIN//./_}"
-    SITE_ROOT="$WEB_ROOT/$DOMAIN"
-    
-    if [ ! -d "$SITE_ROOT" ]; then
-        echo "❌ Ошибка: Домен $DOMAIN не найден"
-        exit 1
-    fi
-    
-    echo "▶ Смена паролей для $DOMAIN"
-    
-    case $TYPE in
-        ftp|all)
-            # Генерируем новый пароль FTP
-            NEW_FTP_PASS=$(generate_password)
-            echo "$FTPUSER:$NEW_FTP_PASS" | chpasswd
-            
-            # Обновляем файл .siteinfo
-            if [ -f "$SITE_ROOT/.siteinfo" ]; then
-                sed -i "s/Пароль FTP:.*/Пароль FTP: $NEW_FTP_PASS/" "$SITE_ROOT/.siteinfo"
-            fi
-            
-            echo "🔐 Новый пароль FTP: $NEW_FTP_PASS"
-            ;;
-    esac
-    
-    case $TYPE in
-        mysql|all)
-            # Генерируем новый пароль MySQL
-            NEW_DB_PASS=$(generate_password)
-            
-            # Меняем пароль пользователя MySQL
-            mysql -e "ALTER USER '$FTPUSER'@'localhost' IDENTIFIED BY '$NEW_DB_PASS';" 2>/dev/null || true
-            mysql -e "FLUSH PRIVILEGES;" 2>/dev/null || true
-            
-            # Обновляем файл .siteinfo
-            if [ -f "$SITE_ROOT/.siteinfo" ]; then
-                sed -i "s/Пароль БД:.*/Пароль БД: $NEW_DB_PASS/" "$SITE_ROOT/.siteinfo"
-            fi
-            
-            echo "🗄️  Новый пароль MySQL: $NEW_DB_PASS"
-            ;;
-    esac
-    
-    # Если .siteinfo существует, показываем все данные
-    if [ -f "$SITE_ROOT/.siteinfo" ]; then
-        echo ""
-        echo "📋 Обновленная информация о сайте:"
-        cat "$SITE_ROOT/.siteinfo"
-    fi
-    
-    echo "✅ Пароли успешно изменены"
-}
-
-show_info() {
-    if [ -z "$DOMAIN" ]; then
-        echo "❌ Ошибка: Укажите домен"
-        echo "Использование: ./host.sh info domain"
-        exit 1
+        echo "❌ Укажите домен"
+        return 1
     fi
     
     FTPUSER="${DOMAIN//./_}"
-    SITE_ROOT="$WEB_ROOT/$DOMAIN"
+    TYPE=${3:-"all"}
     
-    if [ ! -d "$SITE_ROOT" ]; then
-        echo "❌ Ошибка: Домен $DOMAIN не найден"
-        exit 1
+    echo "🔑 Смена паролей для: $DOMAIN"
+    
+    if [ "$TYPE" = "ftp" ] || [ "$TYPE" = "all" ]; then
+        NEW_FTP_PASS=$(openssl rand -base64 12 | tr -d '/+' | cut -c1-12)
+        echo "$FTPUSER:$NEW_FTP_PASS" | chpasswd
+        echo "✅ FTP пароль: $NEW_FTP_PASS"
     fi
     
-    echo "📋 Информация о домене $DOMAIN"
-    echo "================================"
-    
-    if [ -f "$SITE_ROOT/.siteinfo" ]; then
-        cat "$SITE_ROOT/.siteinfo"
-    else
-        echo "Информация:"
-        echo "  Домен: $DOMAIN"
-        echo "  Пользователь FTP: $FTPUSER"
-        echo "  Каталог: $SITE_ROOT/www/public_html"
-        echo "  База данных: ${FTPUSER}_db"
-        echo "  Пользователь БД: $FTPUSER"
-        echo ""
-        echo "⚠️  Файл .siteinfo не найден. Пароли не отображаются."
-        echo "   Используйте ./host.sh change-password $DOMAIN для сброса паролей."
-    fi
-    
-    # Проверяем SSL
-    echo ""
-    echo "🔐 SSL сертификат:"
-    if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-        echo "  ✅ Установлен"
-        echo "  Срок действия:"
-        openssl x509 -in "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" -noout -dates | grep notAfter | cut -d= -f2
-    else
-        echo "  ❌ Не установлен"
-        echo "  Используйте: ./host.sh ssl $DOMAIN"
-    fi
-    
-    # Проверка FTP
-    echo ""
-    echo "📤 FTP статус:"
-    if grep -q "^$FTPUSER$" /etc/vsftpd.user_list 2>/dev/null; then
-        echo "  ✅ Пользователь в списке FTP"
-    else
-        echo "  ❌ Пользователь не в списке FTP"
-        echo "  Используйте: ./host.sh reconfigure"
+    if [ "$TYPE" = "mysql" ] || [ "$TYPE" = "all" ]; then
+        NEW_DB_PASS=$(openssl rand -base64 12 | tr -d '/+' | cut -c1-12)
+        mysql -e "ALTER USER '$FTPUSER'@'localhost' IDENTIFIED BY '$NEW_DB_PASS';" 2>/dev/null || true
+        echo "✅ MySQL пароль: $NEW_DB_PASS"
     fi
 }
 
 list_domains() {
-    echo "📋 Список доменов:"
+    echo "📋 СПИСОК ДОМЕНОВ"
+    echo "================"
     echo ""
     
+    count=0
     for conf in $APACHE_SITES/*.conf; do
-        if [ -f "$conf" ]; then
+        if [ -f "$conf" ] && [[ ! "$conf" =~ "default" ]] && [[ ! "$conf" =~ "000" ]]; then
             DOMAIN=$(basename "$conf" .conf)
             FTPUSER="${DOMAIN//./_}"
             
-            if id "$FTPUSER" &>/dev/null; then
-                echo "  🌐 $DOMAIN"
-                echo "     Пользователь: $FTPUSER"
-                echo "     Каталог: $WEB_ROOT/$DOMAIN/www/public_html"
-                
-                # Показываем SSL статус
-                if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
-                    echo "     SSL: ✅ Установлен"
-                else
-                    echo "     SSL: ❌ Отсутствует"
-                fi
-                
-                # Показываем FTP статус
-                if grep -q "^$FTPUSER$" /etc/vsftpd.user_list 2>/dev/null; then
-                    echo "     FTP: ✅ Настроен"
-                else
-                    echo "     FTP: ⚠️  Требуется настройка"
-                fi
-                echo ""
+            echo "🌐 $DOMAIN"
+            echo "   👤 Пользователь: $FTPUSER"
+            echo "   📁 Директория: $WEB_ROOT/$DOMAIN"
+            
+            # Проверяем SSL
+            if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+                echo "   🔐 SSL: Установлен"
+            else
+                echo "   🔐 SSL: Не установлен"
             fi
+            
+            echo ""
+            ((count++))
         fi
     done
+    
+    if [ $count -eq 0 ]; then
+        echo "ℹ️  Домены не найдены"
+    else
+        echo "📊 Всего: $count домен(ов)"
+    fi
 }
 
-# GUI функция
-show_gui() {
-    while true; do
-        clear
-        echo "========================================="
-        echo "          🚀 Панель управления          "
-        echo "========================================="
-        echo ""
-        echo "1. 📦 Установить стек (LAMP + FTP)"
-        echo "2. ➕ Добавить домен"
-        echo "3. 🗑️  Удалить домен"
-        echo "4. 🔐 Установить SSL"
-        echo "5. 🔄 Обновить SSL"
-        echo "6. 🔑 Сменить пароли"
-        echo "7. ℹ️  Информация о домене"
-        echo "8. 📋 Список доменов"
-        echo "9. 📊 Статус сервисов"
-        echo "10. 🔧 Переконфигурировать сервисы"
-        echo "11. 🚪 Выход"
-        echo ""
-        echo "========================================="
-        
-        read -p "Выберите действие [1-11]: " choice
-        
-        case $choice in
-            1)
-                install_stack
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            2)
-                read -p "Введите домен: " DOMAIN
-                echo "Пароль FTP будет сгенерирован автоматически."
-                echo "Если хотите указать свой пароль, введите его ниже,"
-                read -p "иначе оставьте пустым: " FTPPASS
-                add_domain
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            3)
-                read -p "Введите домен для удаления: " DOMAIN
-                del_domain
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            4)
-                read -p "Введите домен для SSL: " DOMAIN
-                ssl_domain
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            5)
-                renew_ssl
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            6)
-                read -p "Введите домен: " DOMAIN
-                echo "Что сгенерировать заново?"
-                echo "1. Пароль FTP"
-                echo "2. Пароль MySQL"
-                echo "3. Все пароли"
-                read -p "Выберите [1-3]: " pass_choice
-                
-                case $pass_choice in
-                    1) TYPE="ftp" ;;
-                    2) TYPE="mysql" ;;
-                    3) TYPE="all" ;;
-                    *) TYPE="all" ;;
-                esac
-                
-                change_password "$DOMAIN" "$TYPE"
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            7)
-                read -p "Введите домен: " DOMAIN
-                show_info
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            8)
-                list_domains
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            9)
-                echo "📊 Статус сервисов:"
-                echo "------------------"
-                echo "Apache2:"
-                systemctl status apache2 --no-pager -l | head -10
-                echo ""
-                echo "FTP:"
-                systemctl status vsftpd --no-pager -l | head -10
-                echo ""
-                echo "MySQL:"
-                systemctl status mysql --no-pager -l | head -10
-                echo ""
-                echo "Firewall (UFW):"
-                ufw status verbose
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            10)
-                echo "🔧 Переконфигурация сервисов..."
-                reconfigure_services
-                read -p "Нажмите Enter для продолжения..."
-                ;;
-            11)
-                echo "До свидания!"
-                exit 0
-                ;;
-            *)
-                echo "❌ Неверный выбор"
-                sleep 1
-                ;;
-        esac
-    done
+show_info() {
+    if [ -z "$DOMAIN" ]; then
+        echo "❌ Укажите домен"
+        return 1
+    fi
+    
+    FTPUSER="${DOMAIN//./_}"
+    SITE_ROOT="$WEB_ROOT/$DOMAIN"
+    
+    echo "ℹ️  ИНФОРМАЦИЯ О ДОМЕНЕ: $DOMAIN"
+    echo "================================"
+    echo ""
+    
+    # Проверяем пользователя
+    if id "$FTPUSER" &>/dev/null; then
+        echo "✅ Пользователь существует: $FTPUSER"
+        echo "   Домашняя директория: $(getent passwd "$FTPUSER" | cut -d: -f6)"
+        echo "   Оболочка: $(getent passwd "$FTPUSER" | cut -d: -f7)"
+    else
+        echo "❌ Пользователь не существует"
+    fi
+    
+    echo ""
+    
+    # Проверяем директорию
+    if [ -d "$SITE_ROOT" ]; then
+        echo "✅ Директория существует: $SITE_ROOT"
+        echo "   Размер: $(du -sh "$SITE_ROOT" 2>/dev/null | cut -f1)"
+    else
+        echo "❌ Директория не существует"
+    fi
+    
+    echo ""
+    
+    # Проверяем Apache
+    if [ -f "$APACHE_SITES/$DOMAIN.conf" ]; then
+        echo "✅ Конфиг Apache существует"
+    else
+        echo "❌ Конфиг Apache не найден"
+    fi
+    
+    echo ""
+    
+    # Проверяем FTP
+    if grep -q "^$FTPUSER$" /etc/vsftpd.user_list 2>/dev/null; then
+        echo "✅ В списке FTP пользователей"
+    else
+        echo "❌ Нет в списке FTP пользователей"
+    fi
+    
+    echo ""
+    
+    # Проверяем SSL
+    if [ -f "/etc/letsencrypt/live/$DOMAIN/fullchain.pem" ]; then
+        echo "✅ SSL сертификат установлен"
+    else
+        echo "❌ SSL сертификат не установлен"
+    fi
 }
 
+show_status() {
+    echo "📊 СТАТУС СЕРВИСОВ"
+    echo "=================="
+    echo ""
+    
+    echo "🌐 Apache2:"
+    if systemctl is-active apache2 >/dev/null; then
+        echo "  ✅ Работает"
+    else
+        echo "  ❌ Не работает"
+    fi
+    
+    echo ""
+    echo "📤 FTP (vsftpd):"
+    if systemctl is-active vsftpd >/dev/null; then
+        echo "  ✅ Работает"
+        echo "  👥 Пользователей: $(wc -l /etc/vsftpd.user_list 2>/dev/null | cut -d' ' -f1 || echo 0)"
+    else
+        echo "  ❌ Не работает"
+    fi
+    
+    echo ""
+    echo "🗄️  MySQL:"
+    if systemctl is-active mysql >/dev/null; then
+        echo "  ✅ Работает"
+    else
+        echo "  ❌ Не работает"
+    fi
+    
+    echo ""
+    echo "🛡️  Брандмауэр (UFW):"
+    ufw status | grep -E "Status|действует" | head -1
+    
+    echo ""
+    echo "💾 Дисковое пространство:"
+    df -h /var/www | tail -1
+}
+
+# Запуск
 case "$1" in
     install)
         install_stack
@@ -645,59 +804,21 @@ case "$1" in
         FTPPASS=$3
         add_domain
         ;;
-    del-domain)
+    fix-user)
+        fix_user "$2"
+        ;;
+    fix-domain)
         DOMAIN=$2
-        del_domain
-        ;;
-    ssl)
-        DOMAIN=$2
-        ssl_domain
-        ;;
-    renew-ssl)
-        renew_ssl
-        ;;
-    change-password)
-        DOMAIN=$2
-        TYPE=$3
-        change_password "$DOMAIN" "$TYPE"
-        ;;
-    info)
-        DOMAIN=$2
-        show_info
-        ;;
-    list)
-        list_domains
-        ;;
-    reconfigure)
-        reconfigure_services
+        fix_domain
         ;;
     gui)
         show_gui
         ;;
     *)
-        echo "🚀 Панель управления хостингом"
-        echo "================================"
+        echo "Для запуска GUI используйте: ./host.sh gui"
         echo ""
-        echo "Команды:"
-        echo "  ./host.sh install                  - Установка стека"
-        echo "  ./host.sh add-domain domain [pass] - Добавить домен"
-        echo "  ./host.sh del-domain domain        - Удалить домен"
-        echo "  ./host.sh ssl domain               - Установить SSL"
-        echo "  ./host.sh renew-ssl                - Обновить SSL"
-        echo "  ./host.sh change-password domain [type] - Сменить пароли"
-        echo "      type: ftp, mysql, all (по умолчанию: all)"
-        echo "  ./host.sh info domain              - Информация о домене"
-        echo "  ./host.sh list                     - Список доменов"
-        echo "  ./host.sh reconfigure              - Переконфигурировать сервисы"
-        echo "  ./host.sh gui                      - Графический интерфейс"
-        echo ""
-        echo "Примеры:"
-        echo "  ./host.sh add-domain mysite.ru                 # Пароль сгенерируется"
-        echo "  ./host.sh add-domain mysite.ru mypassword123   # Своим паролем"
-        echo "  ./host.sh change-password mysite.ru ftp        # Сменить только FTP"
-        echo "  ./host.sh change-password mysite.ru mysql      # Сменить только MySQL"
-        echo "  ./host.sh change-password mysite.ru            # Сменить все пароли"
-        echo "  ./host.sh info mysite.ru                       # Показать данные"
-        echo "  ./host.sh reconfigure                          # Перенастроить сервисы"
+        echo "Или исправьте текущую проблему:"
+        echo "  ./host.sh fix-user ioc_kz"
+        echo "  ./host.sh reconfigure"
         ;;
 esac
