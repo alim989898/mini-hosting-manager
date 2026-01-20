@@ -34,9 +34,12 @@ local_root=/home/\$USER/www
 pam_service_name=vsftpd
 userlist_enable=YES
 userlist_deny=NO
+userlist_file=/etc/vsftpd.user_list
 EOF
 
-    touch /etc/vsftpd.userlist
+    touch /etc/vsftpd.user_list
+    chmod 600 /etc/vsftpd.user_list
+
     systemctl restart vsftpd
 
     a2enmod rewrite ssl
@@ -54,9 +57,11 @@ add_domain() {
     mkdir -p "$SITE_ROOT"
 
     if ! id "$FTPUSER" &>/dev/null; then
-        useradd -d "$WEB_ROOT/$DOMAIN" -s /usr/sbin/nologin "$FTPUSER"
+        useradd -d "$WEB_ROOT/$DOMAIN" -s /bin/bash "$FTPUSER"
         echo "$FTPUSER:$FTPPASS" | chpasswd
-        echo "$FTPUSER" >> /etc/vsftpd.userlist
+
+        # Добавляем в список пользователей vsftpd
+        echo "$FTPUSER" >> /etc/vsftpd.user_list
     fi
 
     chown -R "$FTPUSER:www-data" "$WEB_ROOT/$DOMAIN"
@@ -98,6 +103,11 @@ del_domain() {
     rm -f "$APACHE_SITES/$DOMAIN.conf"
     rm -rf "$WEB_ROOT/$DOMAIN"
 
+    # Удаляем пользователя из vsftpd.user_list
+    if [ -n "$FTPUSER" ]; then
+        sed -i "/^$FTPUSER$/d" /etc/vsftpd.user_list
+    fi
+
     systemctl reload apache2
 
     echo "✅ Домен $DOMAIN удалён"
@@ -134,7 +144,7 @@ case "$ACTION" in
         echo "Использование:"
         echo "  ./host.sh install"
         echo "  ./host.sh add-domain domain ftpuser password"
-        echo "  ./host.sh del-domain domain"
+        echo "  ./host.sh del-domain domain ftpuser"
         echo "  ./host.sh ssl domain"
         echo "  ./host.sh renew-ssl"
         ;;
